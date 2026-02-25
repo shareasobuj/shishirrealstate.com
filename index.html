@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>shishirrealstate.com</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial}
+body{background:#f4f7fb}
+header{background:#0f172a;color:#fff;padding:15px;text-align:center}
+.container{max-width:1100px;margin:auto;padding:20px}
+.card{background:#fff;border-radius:12px;padding:20px;margin:15px 0;box-shadow:0 5px 15px rgba(0,0,0,.08)}
+input,button,select{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #ccc}
+button{background:#2563eb;color:#fff;border:none;font-weight:bold;cursor:pointer}
+button:hover{background:#1e40af}
+.flex{display:flex;gap:15px;flex-wrap:wrap}
+.property{flex:1 1 250px;border:1px solid #eee;border-radius:10px;padding:10px}
+.property img{width:100%;height:150px;object-fit:cover;border-radius:8px}
+.logout{background:#ef4444}
+.hidden{display:none}
+.chatbox{height:200px;overflow:auto;border:1px solid #ddd;padding:10px;margin-bottom:8px}
+iframe{width:100%;height:250px;border:0;border-radius:10px}
+.admin-only{background:#fff7ed;border:1px dashed #f97316}
+.small{font-size:12px;color:#555}
+@media(max-width:600px){.flex{flex-direction:column}}
+</style>
+</head>
+<body>
+<header>
+<h1>🏠 shishirrealstate.com</h1>
+<p>Full Real‑Time Real Estate Platform</p>
+</header>
+
+<div class="container">
+
+<!-- ===== AUTH ===== -->
+<div id="authSection" class="card">
+<h2>🔐 Login / Signup</h2>
+<input type="text" id="name" placeholder="Full Name (signup)">
+<input type="email" id="email" placeholder="Email">
+<input type="password" id="password" placeholder="Password">
+<button onclick="signup()">Sign Up</button>
+<button onclick="login()">Sign In</button>
+<p class="small">Admin email: admin@admin.com</p>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<div id="dashboard" class="hidden">
+
+<div class="card">
+<h3>👤 Profile</h3>
+<div id="profile"></div>
+<button class="logout" onclick="logout()">Logout</button>
+</div>
+
+<!-- ADMIN PANEL -->
+<div class="card admin-only hidden" id="adminPanel">
+<h3>🔐 Admin Super Panel</h3>
+<p>Total Users: <b id="adminUsers">0</b></p>
+<p>Total Properties: <b id="adminProps">0</b></p>
+<button onclick="loadBookings()">📊 View Bookings</button>
+<div id="bookingList"></div>
+</div>
+
+<!-- ADD PROPERTY -->
+<div class="card">
+<h3>➕ Add Property</h3>
+<input type="text" id="pTitle" placeholder="Title">
+<input type="text" id="pLocation" placeholder="Location">
+<input type="number" id="pPrice" placeholder="Price">
+<input type="text" id="pMap" placeholder="Google Map Embed Link">
+<input type="file" id="pImage" accept="image/*">
+<button onclick="addProperty()">Add Property</button>
+</div>
+
+<!-- SEARCH -->
+<div class="card">
+<h3>🔍 Search</h3>
+<input type="text" id="searchBox" placeholder="Search..." onkeyup="loadProperties()">
+</div>
+
+<!-- PROPERTIES -->
+<div class="card">
+<h3>🏘️ Properties</h3>
+<div id="propertyList" class="flex"></div>
+</div>
+
+<!-- CHAT -->
+<div class="card">
+<h3>💬 Live Chat</h3>
+<div id="chatbox" class="chatbox"></div>
+<input type="text" id="chatInput" placeholder="Type message">
+<button onclick="sendMessage()">Send</button>
+</div>
+
+<!-- PAYMENT -->
+<div class="card">
+<h3>💰 Payment Info (Demo)</h3>
+<p>bKash/Nagad integration demo ready. Replace with merchant API.</p>
+</div>
+
+</div>
+</div>
+
+<!-- ===== FIREBASE CONFIG ===== -->
+<script>
+// 🔥 STEP 1: Replace with your Firebase config
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ===== AUTH =====
+function signup(){
+  const email=val('email');
+  const pass=val('password');
+  const name=val('name');
+  auth.createUserWithEmailAndPassword(email,pass)
+  .then(res=>db.collection('users').doc(res.user.uid).set({name,email}));
+}
+function login(){auth.signInWithEmailAndPassword(val('email'),val('password'));}
+function logout(){auth.signOut();}
+function val(id){return document.getElementById(id).value}
+
+// ===== AUTH STATE =====
+auth.onAuthStateChanged(user=>{
+  if(user){
+    document.getElementById('authSection').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    loadProfile(user.uid);
+    loadProperties();
+    loadChat();
+    checkAdmin(user.email);
+  }
+});
+
+// ===== PROFILE =====
+function loadProfile(uid){
+  db.collection('users').doc(uid).get().then(d=>{
+    document.getElementById('profile').innerHTML=`<b>${d.data().name}</b><br>${d.data().email}`;
+  });
+}
+
+// ===== ADMIN =====
+function checkAdmin(email){
+  if(email==='admin@admin.com'){
+    document.getElementById('adminPanel').classList.remove('hidden');
+    loadAdminStats();
+  }
+}
+function loadAdminStats(){
+  db.collection('users').get().then(s=>adminUsers.innerText=s.size);
+  db.collection('properties').get().then(s=>adminProps.innerText=s.size);
+}
+function loadBookings(){
+  db.collection('bookings').get().then(s=>{
+    bookingList.innerHTML='';
+    s.forEach(d=>bookingList.innerHTML+=`<p>${d.data().user}</p>`);
+  });
+}
+
+// ===== ADD PROPERTY =====
+function addProperty(){
+  const file=document.getElementById('pImage').files[0];
+  const reader=new FileReader();
+  reader.onload=function(){
+    db.collection('properties').add({
+      title:val('pTitle'),
+      location:val('pLocation'),
+      price:val('pPrice'),
+      map:val('pMap'),
+      img:reader.result
+    });
+  };
+  if(file) reader.readAsDataURL(file); else reader.onload();
+}
+
+// ===== LOAD PROPERTIES =====
+function loadProperties(){
+  const search=val('searchBox').toLowerCase();
+  db.collection('properties').onSnapshot(snap=>{
+    propertyList.innerHTML='';
+    snap.forEach(doc=>{
+      const p=doc.data();
+      if(!p.title.toLowerCase().includes(search)&&!p.location.toLowerCase().includes(search)) return;
+      propertyList.innerHTML+=`
+      <div class="property">
+        ${p.img?`<img src="${p.img}">`:''}
+        <h4>${p.title}</h4>
+        <p>📍 ${p.location}</p>
+        <p>💰 ৳${p.price}</p>
+        <iframe src="${p.map}"></iframe>
+        <button onclick="bookProperty('${doc.id}')">💳 Book</button>
+      </div>`;
+    });
+  });
+}
+
+// ===== BOOKING =====
+function bookProperty(id){
+  const user=auth.currentUser;
+  db.collection('bookings').add({propertyId:id,user:user.email,date:new Date()});
+  alert('Booking submitted');
+}
+
+// ===== CHAT =====
+function sendMessage(){
+  const user=auth.currentUser;
+  const msg=val('chatInput');
+  if(!msg) return;
+  db.collection('chat').add({user:user.email,text:msg,time:Date.now()});
+  chatInput.value='';
+}
+function loadChat(){
+  db.collection('chat').orderBy('time').onSnapshot(snap=>{
+    chatbox.innerHTML='';
+    snap.forEach(d=>chatbox.innerHTML+=`<p><b>${d.data().user}:</b> ${d.data().text}</p>`);
+    chatbox.scrollTop=chatbox.scrollHeight;
+  });
+}
+</script>
+
+<!-- ===== FIREBASE SETUP GUIDE ===== -->
+<!--
+🚀 FIREBASE SETUP (STEP‑BY‑STEP)
+1. Go to https://console.firebase.google.com
+2. Create project → enable Authentication (Email/Password)
+3. Create Firestore Database (test mode)
+4. Project settings → copy config
+5. Paste into firebaseConfig above
+
+📱 ANDROID APP
+Use this site inside WebView OR tell ChatGPT to convert to APK.
+
+💰 bKash/Nagad
+Replace booking button with your merchant API when ready.
+-->
+
+</body>
+</html>
